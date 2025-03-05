@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Therapist</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <style>
+        /* General Styles */
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 900px;
+            height: 90vh;
+            background-color: #ffffff;
+            border-radius: 20px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        .chat-header {
+            background-color: #007BFF;
+            color: #fff;
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: 700;
+            text-transform: uppercase;
+            border-radius: 20px 20px 0 0;
+        }
+
+        /* File Upload */
+        .file-upload {
+            padding: 20px;
+            text-align: center;
+            background-color: #f7f7f7;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .file-upload input[type="file"] {
+            display: none;
+        }
+
+        .file-upload label {
+            background-color: #4C9AFF;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        .file-upload label:hover {
+            background-color: #007BFF;
+        }
+
+        /* Chat Messages */
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background-color: #f7f7f7;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 20px;
+            border-radius: 20px;
+            font-size: 16px;
+            line-height: 1.5;
+            word-wrap: break-word;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .message.user .message-bubble {
+            background-color: #007BFF;
+            color: #fff;
+            border-radius: 20px 20px 0 20px;
+        }
+
+        .message.bot .message-bubble {
+            background-color: #fff;
+            color: #333;
+            border-radius: 20px 20px 20px 0;
+        }
+
+        .message .icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #4C9AFF;
+            color: #fff;
+            font-size: 18px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Chat Input Area */
+        .chat-form {
+            padding: 20px;
+            background-color: #fff;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 12px 20px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 25px;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        .chat-input:focus {
+            border-color: #007BFF;
+        }
+
+        .mic-button, .send-button {
+            background-color: #4C9AFF;
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .mic-button:hover, .send-button:hover {
+            background-color: #007BFF;
+        }
+
+        .mic-button:active, .send-button:active {
+            transform: scale(0.95);
+        }
+
+        .send-button {
+            font-size: 18px;
+        }
+
+        .mic-button {
+            font-size: 20px;
+        }
+
+        /* Loading State */
+        .loading {
+            opacity: 0.7;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <!-- Header -->
+        <div class="chat-header">AI Therapist</div>
+
+        <!-- File Upload -->
+        <div class="file-upload">
+            <input type="file" id="pdf-upload" accept=".pdf">
+            <label for="pdf-upload">Upload PDF</label>
+        </div>
+
+        <!-- Chat Messages -->
+        <div class="chat-messages" id="chat-messages"></div>
+
+        <!-- Chat Input Form -->
+        <form class="chat-form" onsubmit="return handleSubmit(event)">
+            <input type="text" id="user-input" class="chat-input" placeholder="Type your message here">
+            <button type="button" class="mic-button" id="mic-button" onclick="toggleMic()">🎤</button>
+            <button type="submit" class="send-button" id="send-button">➤</button>
+        </form>
+    </div>
+
+    <script>
+        const accessToken = 'REPLAE WITH YOUR TOKEN '; // Replace with your token here {https://huggingface.co/docs/hub/en/security-tokens}
+        const model = "mistralai/Mixtral-8x7B-Instruct-v0.1";
+        let InfoMdChunks = [];
+        let history = [];
+        let isListening = false;
+
+        // PDF File Upload Handler
+        document.getElementById('pdf-upload').addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const pdfData = new Uint8Array(e.target.result);
+                    const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
+                    let text = '';
+                    
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const content = await page.getTextContent();
+                        text += content.items.map(item => item.str).join(' ');
+                    }
+                    
+                    InfoMdChunks = text.split('\n\n');
+                    console.log('PDF content loaded:', InfoMdChunks);
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        // Chat functions
+        function formatPromptMixtral(message, history, infoMdChunks) {
+            let prompt = "<s>";
+            const maxHistoryLength = 1;
+            const recentHistory = history.slice(-maxHistoryLength);
+            const allChunks = infoMdChunks.join("\n\n");
+            
+            prompt += `${allChunks}\n\nYou are AI assistant chatbot that answer question in clear and concise manner\n\n`;
+            
+            if (recentHistory.length) {
+                recentHistory.forEach(([userPrompt, botResponse]) => {
+                    prompt += `[INST] ${userPrompt} [/INST] ${botResponse}</s> `;
+                });
+            }
+            
+            prompt += `[INST] ${message} [/INST]`;
+            return prompt;
+        }
+
+        async function chatInf(message, history) {
+            const generateParams = {
+                temperature: 0.4,
+                max_new_tokens: 5000,
+                top_p: 0.9,
+                repetition_penalty: 1.0,
+                do_sample: true,
+                seed: Math.floor(Math.random() * 1111111111111111),
+            };
+
+            const formattedPrompt = formatPromptMixtral(message, history, InfoMdChunks);
+
+            try {
+                const response = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: JSON.stringify({
+                        inputs: formattedPrompt,
+                        parameters: generateParams
+                    })
+                });
+
+                const data = await response.json();
+                const generatedText = data[0]?.generated_text || '';
+                const responseText = extractResponse(generatedText);
+
+                if (!responseText) return [history, "No response from model."];
+                
+                history.push([message, responseText]);
+                return [history, responseText];
+            } catch (error) {
+                console.error("API Error:", error);
+                return [history, "An error occurred during processing. Please try again."];
+            }
+        }
+
+        function extractResponse(generatedText) {
+            const lastInstIndex = generatedText.lastIndexOf('[/INST]');
+            return lastInstIndex !== -1 
+                ? generatedText.slice(lastInstIndex + '[/INST]'.length).trim()
+                : generatedText;
+        }
+
+        // UI Handlers
+        async function handleSubmit(e) {
+            e.preventDefault();
+            const userInput = document.getElementById('user-input').value;
+            if (!userInput.trim()) return;
+
+            document.getElementById('send-button').classList.add('loading');
+            document.getElementById('send-button').disabled = true;
+
+            const [newHistory, response] = await chatInf(userInput, history);
+            
+            history = newHistory;
+            updateChatDisplay(userInput, response);
+            speakText(response);
+            
+            document.getElementById('user-input').value = '';
+            document.getElementById('send-button').classList.remove('loading');
+            document.getElementById('send-button').disabled = false;
+        }
+
+        function updateChatDisplay(userMessage, botMessage) {
+            const chatMessages = document.getElementById('chat-messages');
+            
+            // User message
+            const userDiv = document.createElement('div');
+            userDiv.className = 'message user';
+            userDiv.innerHTML = `
+                <div class="message-bubble">${userMessage}</div>
+                <div class="icon">👤</div>
+            `;
+            
+            // Bot message
+            const botDiv = document.createElement('div');
+            botDiv.className = 'message bot';
+            botDiv.innerHTML = `
+                <div class="icon">🤖</div>
+                <div class="message-bubble">${botMessage}</div>
+            `;
+
+            chatMessages.appendChild(userDiv);
+            chatMessages.appendChild(botDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Speech functions
+        function speakText(text) {
+            const speech = new SpeechSynthesisUtterance(text);
+            speech.lang = 'en-US';
+            window.speechSynthesis.speak(speech);
+        }
+
+        function toggleMic() {
+            if (!('webkitSpeechRecognition' in window)) {
+                alert("Speech Recognition not supported");
+                return;
+            }
+
+            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-US';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onstart = () => {
+                isListening = true;
+                document.getElementById('mic-button').textContent = '🎙️';
+            };
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                document.getElementById('user-input').value = transcript;
+                isListening = false;
+                document.getElementById('mic-button').textContent = '🎤';
+            };
+
+            recognition.onerror = () => {
+                isListening = false;
+                document.getElementById('mic-button').textContent = '🎤';
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                document.getElementById('mic-button').textContent = '🎤';
+            };
+
+            isListening ? recognition.stop() : recognition.start();
+        }
+    </script>
+</body>
+</html>
